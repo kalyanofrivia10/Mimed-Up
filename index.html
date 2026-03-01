@@ -1,86 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Mimed-Up</title>
+    <style>
+        :root { --stone: #4a4a4a; --bg: #d6d6d6; --card: #ffffff; }
+        body { font-family: sans-serif; margin: 0; background: var(--bg); color: #333; padding-bottom: 100px; }
+        .header { position: sticky; top: 0; z-index: 100; background: var(--stone); padding: 8px; }
+        .top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .search-bar { flex-grow: 1; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; padding: 8px; color: white; outline: none; }
+        .folder-container { display: flex; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+        .folder-tab { background: rgba(255,255,255,0.15); color: white; padding: 5px 12px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
+        .active-f { background: white; color: var(--stone); font-weight: bold; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
+        .card { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid #bbb; }
+        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; background: #ccc; }
+        .info-input { width: 100%; border: none; padding: 8px; font-size: 11px; background: #fff; box-sizing: border-box; border-top: 1px solid #eee; }
+        .fab-add { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; background: var(--stone); color: white; border-radius: 50%; border: none; font-size: 30px; }
+        .action-btn { background: none; border: none; color: white; font-size: 20px; padding: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="app-content">
+    <div class="header">
+        <div class="top-row">
+            <button class="action-btn" onclick="copyB()">💾</button>
+            <button class="action-btn" onclick="showI()">📥</button>
+            <input type="text" id="search" class="search-bar" placeholder="Search..." oninput="render()">
+            <button class="action-btn" onclick="newF()">+</button>
+        </div>
+        <div id="folder-list" class="folder-container"></div>
+    </div>
+    <div class="grid" id="main-grid"></div>
+    <input type="file" id="f-in" style="display:none" accept="image/*" onchange="process(this)">
+    <button class="fab-add" onclick="document.getElementById('f-in').click()">+</button>
+</div>
+
 <script>
-    let db = JSON.parse(localStorage.getItem('v_stone_v9')) || { folders: ["General"], active: "General", items: [] };
+// SAFETY START: If anything fails, it will alert you instead of showing a white screen
+window.onerror = function(m, u, l) { alert("Error: " + m + " at line " + l); };
 
-    function render() {
-        const searchTerm = document.getElementById('search').value.toLowerCase();
-        document.getElementById('folder-list').innerHTML = db.folders.map(f => `
-            <div class="folder-tab ${db.active === f ? 'active-f' : ''}" onclick="setFolder('${f}')">${f}</div>
-        `).join('');
-        const filtered = db.items.filter(i => (i.f === db.active) && i.txt.toLowerCase().includes(searchTerm));
-        document.getElementById('main-grid').innerHTML = filtered.map(item => `
-            <div class="card">
-                <img src="${item.img}" ontouchstart="startP('${item.id}')" ontouchend="endP()">
-                <textarea class="info-input" oninput="autoGrow(this); updateText('${item.id}', this.value)">${item.txt}</textarea>
-            </div>
-        `).join('');
-        document.querySelectorAll('.info-input').forEach(autoGrow);
+let db = JSON.parse(localStorage.getItem('v_stone_v9')) || { folders: ["General"], active: "General", items: [] };
+
+function render() {
+    const s = document.getElementById('search').value.toLowerCase();
+    document.getElementById('folder-list').innerHTML = db.folders.map(f => `
+        <div class="folder-tab ${db.active === f ? 'active-f' : ''}" onclick="setF('${f}')">${f}</div>
+    `).join('');
+    const filtered = db.items.filter(i => (i.f === db.active) && i.txt.toLowerCase().includes(s));
+    document.getElementById('main-grid').innerHTML = filtered.map(item => `
+        <div class="card">
+            <img src="${item.img}" onclick="del('${item.id}')">
+            <textarea class="info-input" oninput="upd('${item.id}', this.value)">${item.txt}</textarea>
+        </div>
+    `).join('');
+}
+
+function copyB() {
+    const d = JSON.stringify(db);
+    navigator.clipboard.writeText(d).then(() => alert("COPIED! Paste this into Acode and save it."));
+}
+
+function showI() {
+    const val = prompt("Paste backup text here:");
+    if(val) {
+        try {
+            const p = JSON.parse(val);
+            if(p.items) { db = p; save(); render(); alert("Restored!"); }
+        } catch(e) { alert("Invalid data."); }
     }
+}
 
-    // BETTER BACKUP: Copies text but also handles errors
-    function copyBackup() {
-        const data = JSON.stringify(db);
-        navigator.clipboard.writeText(data).then(() => {
-            alert("SUCCESS: Full data (with images) copied. Paste it into a New File in Acode and save it!");
-        }).catch(err => alert("Error copying. Your database might be too large for the clipboard."));
-    }
-
-    // BETTER RESTORE: Uses a dedicated screen area instead of a prompt
-    function importBackup() {
-        const overlay = document.createElement('div');
-        overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:1000; padding:20px; box-sizing:border-box; display:flex; flex-direction:column;";
-        overlay.innerHTML = `
-            <h3 style="margin-top:0">Paste Backup Text Below:</h3>
-            <textarea id="importArea" style="flex-grow:1; width:100%; border:1px solid #ccc; font-size:10px; margin-bottom:10px;"></textarea>
-            <div style="display:flex; gap:10px;">
-                <button id="confirmImport" style="flex:1; padding:15px; background:var(--stone); color:white; border:none; border-radius:8px;">IMPORT EVERYTHING</button>
-                <button id="cancelImport" style="flex:1; padding:15px; background:#ccc; border:none; border-radius:8px;">CANCEL</button>
-            </div>
-        `;
-        document.body.appendChild(overlay);
-
-        document.getElementById('confirmImport').onclick = () => {
-            const rawData = document.getElementById('importArea').value.trim();
-            try {
-                const parsed = JSON.parse(rawData);
-                if (parsed.items) {
-                    db = parsed;
-                    save();
-                    render();
-                    document.body.removeChild(overlay);
-                    alert("RESORE COMPLETE! Your images are back.");
-                }
-            } catch (e) {
-                alert("STILL INVALID: The text you pasted is incomplete. Make sure you copied the ENTIRE file from Acode (Use 'Select All').");
-            }
+function process(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const scale = 400 / img.width;
+            canvas.width = 400; canvas.height = img.height * scale;
+            canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+            db.items.push({ id: Date.now().toString(), f: db.active, img: canvas.toDataURL('image/jpeg', 0.5), txt: "" });
+            save(); render();
         };
-        document.getElementById('cancelImport').onclick = () => document.body.removeChild(overlay);
-    }
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(input.files[0]);
+}
 
-    function processImage(input) {
-        if (!input.files[0]) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const scale = 400 / img.width; 
-                canvas.width = 400; canvas.height = img.height * scale;
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                db.items.push({ id: Date.now().toString(), f: db.active, img: canvas.toDataURL('image/jpeg', 0.5), txt: "" });
-                save(); render();
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(input.files[0]);
-    }
+function setF(n) { db.active = n; save(); render(); }
+function newF() { const n = prompt("New Folder:"); if(n) { db.folders.push(n); db.active = n; save(); render(); } }
+function upd(id, v) { const i = db.items.findIndex(x => x.id === id); if(i > -1) { db.items[i].txt = v; save(); } }
+function del(id) { if(confirm("Delete?")) { db.items = db.items.filter(i => i.id !== id); save(); render(); } }
+function save() { localStorage.setItem('v_stone_v9', JSON.stringify(db)); }
 
-    function autoGrow(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
-    function updateText(id, val) { const idx = db.items.findIndex(i => i.id === id); if(idx > -1) { db.items[idx].txt = val; save(); } }
-    function setFolder(n) { db.active = n; save(); render(); }
-    function newFolder() { const n = prompt("Folder Name:"); if(n) { db.folders.push(n); db.active = n; save(); render(); } }
-    function save() { localStorage.setItem('v_stone_v9', JSON.stringify(db)); }
-    let pTimer;
-    function startP(id) { pTimer = setTimeout(() => { if(confirm("Delete?")) { db.items = db.items.filter(i => i.id !== id); save(); render(); } }, 800); }
-    function endP() { clearTimeout(pTimer); }
-    render();
+render();
 </script>
+</body>
+</html>
