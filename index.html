@@ -3,61 +3,88 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mimed-Up</title>
     <style>
-        :root { --stone: #4a4a4a; --bg: #d6d6d6; --card: #ffffff; }
-        body { font-family: sans-serif; margin: 0; background: var(--bg); color: #333; padding-bottom: 100px; }
-        .header { position: sticky; top: 0; z-index: 100; background: var(--stone); padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .search-bar { flex-grow: 1; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; padding: 8px; color: white; outline: none; }
+        :root { --stone: #4a4a4a; --bg: #d6d6d6; }
+        body { font-family: sans-serif; margin: 0; background: var(--bg); padding-bottom: 100px; }
+        
+        /* Header */
+        .header { position: sticky; top: 0; z-index: 100; background: var(--stone); padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+        .search-bar { flex-grow: 1; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; padding: 10px; color: white; outline: none; }
+        .btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 5px; }
+
+        /* Grid */
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
-        .card { background: var(--card); border-radius: 8px; overflow: hidden; border: 1px solid #bbb; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; background: #eee; }
-        .info-input { width: 100%; border: none; padding: 8px; font-size: 12px; background: #fff; box-sizing: border-box; border-top: 1px solid #eee; resize: none; }
-        .fab { position: fixed; bottom: 20px; right: 20px; width: 60px; height: 60px; background: var(--stone); color: white; border-radius: 50%; border: none; font-size: 30px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .btn { background: none; border: none; color: white; font-size: 22px; cursor: pointer; }
+        .card { background: white; border-radius: 8px; overflow: hidden; border: 1px solid #bbb; display: flex; flex-direction: column; }
+        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; cursor: zoom-in; }
+        
+        /* Auto-Expanding Textbox */
+        .info-input { width: 100%; border: none; padding: 10px; font-size: 13px; background: #fff; box-sizing: border-box; border-top: 1px solid #eee; resize: none; overflow: hidden; min-height: 40px; color: #111; display: block; }
+
+        /* Full Screen Overlay */
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; }
+        #overlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+        .fab { position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; background: var(--stone); color: white; border-radius: 50%; border: none; font-size: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 10; }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <button class="btn" onclick="copyB()">💾</button>
-    <button class="btn" onclick="showI()">📥</button>
+    <button class="btn" onclick="copyPureText()" title="Copy All Notes">💾</button>
     <input type="text" id="search" class="search-bar" placeholder="Search..." oninput="render()">
 </div>
 
 <div class="grid" id="main-grid"></div>
 
+<div id="overlay" onclick="this.style.display='none'">
+    <img id="overlay-img" src="">
+</div>
+
 <input type="file" id="f-in" style="display:none" accept="image/*" onchange="process(this)">
 <button class="fab" onclick="document.getElementById('f-in').click()">+</button>
 
 <script>
-    // Database check - stays on v9 to keep your data
-    let db = JSON.parse(localStorage.getItem('v_stone_v9')) || { folders: ["General"], active: "General", items: [] };
+    let db = JSON.parse(localStorage.getItem('v_stone_v9')) || { items: [] };
 
     function render() {
         const s = document.getElementById('search').value.toLowerCase();
         const filtered = db.items.filter(i => i.txt.toLowerCase().includes(s));
-        document.getElementById('main-grid').innerHTML = filtered.map(item => `
+        
+        const grid = document.getElementById('main-grid');
+        grid.innerHTML = filtered.map(item => `
             <div class="card">
-                <img src="${item.img}" onclick="del('${item.id}')">
-                <textarea class="info-input" oninput="upd('${item.id}', this.value)">${item.txt}</textarea>
+                <img src="${item.img}" onclick="openImg('${item.img}')" oncontextmenu="del('${item.id}'); return false;">
+                <textarea class="info-input" oninput="autoGrow(this); upd('${item.id}', this.value)" placeholder="..."> ${item.txt}</textarea>
             </div>
         `).join('');
+        
+        document.querySelectorAll('.info-input').forEach(autoGrow);
     }
 
-    function copyB() {
-        const d = JSON.stringify(db);
-        navigator.clipboard.writeText(d).then(() => alert("COPIED! Paste into Acode."));
+    function autoGrow(el) {
+        el.style.height = "auto";
+        el.style.height = el.scrollHeight + "px";
     }
 
-    function showI() {
-        const val = prompt("Paste backup text:");
-        if(val) {
-            try {
-                const p = JSON.parse(val);
-                if(p.items) { db = p; save(); render(); alert("Restored!"); }
-            } catch(e) { alert("Invalid data."); }
-        }
+    function openImg(src) {
+        const ov = document.getElementById('overlay');
+        const img = document.getElementById('overlay-img');
+        img.src = src;
+        ov.style.display = 'flex';
+    }
+
+    // COPIES ONLY THE WRITTEN TEXT
+    function copyPureText() {
+        const textOnly = db.items
+            .map(i => i.txt.trim())
+            .filter(t => t !== "")
+            .join("\n---\n");
+            
+        if (!textOnly) { alert("No notes found!"); return; }
+
+        navigator.clipboard.writeText(textOnly).then(() => {
+            alert("NOTES COPIED: All your written text is now on your clipboard.");
+        });
     }
 
     function process(input) {
@@ -67,10 +94,10 @@
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const scale = 400 / img.width;
-                canvas.width = 400; canvas.height = img.height * scale;
+                const scale = 500 / img.width; 
+                canvas.width = 500; canvas.height = img.height * scale;
                 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                db.items.push({ id: Date.now().toString(), f: "General", img: canvas.toDataURL('image/jpeg', 0.5), txt: "" });
+                db.items.push({ id: Date.now().toString(), img: canvas.toDataURL('image/jpeg', 0.6), txt: "" });
                 save(); render();
             };
             img.src = e.target.result;
@@ -92,7 +119,6 @@
 
     function save() { localStorage.setItem('v_stone_v9', JSON.stringify(db)); }
 
-    // Initial render
     render();
 </script>
 
