@@ -1,41 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <style>
-        :root { --stone: #4a4a4a; --bg: #d6d6d6; --card: #ffffff; }
-        body { font-family: sans-serif; margin: 0; background: var(--bg); color: #333; padding-bottom: 100px; }
-        .header { position: sticky; top: 0; z-index: 100; background: var(--stone); padding: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
-        .top-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .search-bar { flex-grow: 1; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; padding: 6px 12px; color: white; font-size: 14px; outline: none; }
-        .folder-container { display: flex; overflow-x: auto; gap: 6px; scrollbar-width: none; }
-        .folder-tab { background: rgba(255,255,255,0.15); color: white; padding: 5px 12px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
-        .active-f { background: white; color: var(--stone); font-weight: bold; }
-        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
-        .card { background: var(--card); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: 1px solid #bbb; }
-        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; }
-        .info-input { width: 100%; border: none; padding: 8px; font-size: 11px; line-height: 1.3; background: #fff; resize: none; overflow: hidden; box-sizing: border-box; border-top: 1px solid #eee; }
-        .fab-add { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; background: var(--stone); color: white; border-radius: 50%; border: none; font-size: 28px; z-index: 10; }
-        .action-btn { background: none; border: none; color: white; font-size: 20px; }
-    </style>
-</head>
-<body>
-
-<div class="header">
-    <div class="top-row">
-        <button class="action-btn" onclick="shareBackup()" title="Share Backup">📤</button>
-        <button class="action-btn" onclick="importBackup()" title="Restore">📥</button>
-        <input type="text" id="search" class="search-bar" placeholder="Search..." oninput="render()">
-        <button class="action-btn" onclick="newFolder()">+</button>
-    </div>
-    <div id="folder-list" class="folder-container"></div>
-</div>
-
-<div class="grid" id="main-grid"></div>
-
-<input type="file" id="f-in" style="display:none" accept="image/*" onchange="processImage(this)">
-<button class="fab-add" onclick="document.getElementById('f-in').click()">+</button>
-
 <script>
     let db = JSON.parse(localStorage.getItem('v_stone_v9')) || { folders: ["General"], active: "General", items: [] };
 
@@ -54,46 +16,44 @@
         document.querySelectorAll('.info-input').forEach(autoGrow);
     }
 
-    // NEW SHARE BACKUP: This triggers the Android Share Menu
-    async function shareBackup() {
+    // BETTER BACKUP: Copies text but also handles errors
+    function copyBackup() {
         const data = JSON.stringify(db);
-        const file = new File([data], "mimed_up_backup.txt", { type: "text/plain" });
-        
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            try {
-                await navigator.share({
-                    files: [file],
-                    title: 'Mimed-Up Backup',
-                    text: 'My secure photo notes backup'
-                });
-            } catch (err) {
-                alert("Share failed. Trying clipboard fallback...");
-                copyToClipboard(data);
-            }
-        } else {
-            copyToClipboard(data);
-        }
+        navigator.clipboard.writeText(data).then(() => {
+            alert("SUCCESS: Full data (with images) copied. Paste it into a New File in Acode and save it!");
+        }).catch(err => alert("Error copying. Your database might be too large for the clipboard."));
     }
 
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            alert("Share not supported. Data COPIED to clipboard instead! Paste it into a Note app.");
-        });
-    }
-
+    // BETTER RESTORE: Uses a dedicated screen area instead of a prompt
     function importBackup() {
-        const data = prompt("Paste your backup text here to restore:");
-        if (data) {
+        const overlay = document.createElement('div');
+        overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:white; z-index:1000; padding:20px; box-sizing:border-box; display:flex; flex-direction:column;";
+        overlay.innerHTML = `
+            <h3 style="margin-top:0">Paste Backup Text Below:</h3>
+            <textarea id="importArea" style="flex-grow:1; width:100%; border:1px solid #ccc; font-size:10px; margin-bottom:10px;"></textarea>
+            <div style="display:flex; gap:10px;">
+                <button id="confirmImport" style="flex:1; padding:15px; background:var(--stone); color:white; border:none; border-radius:8px;">IMPORT EVERYTHING</button>
+                <button id="cancelImport" style="flex:1; padding:15px; background:#ccc; border:none; border-radius:8px;">CANCEL</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        document.getElementById('confirmImport').onclick = () => {
+            const rawData = document.getElementById('importArea').value.trim();
             try {
-                const parsed = JSON.parse(data);
-                if(parsed.items) {
+                const parsed = JSON.parse(rawData);
+                if (parsed.items) {
                     db = parsed;
                     save();
                     render();
-                    alert("Success! All images and notes restored.");
+                    document.body.removeChild(overlay);
+                    alert("RESORE COMPLETE! Your images are back.");
                 }
-            } catch(e) { alert("Invalid backup data."); }
-        }
+            } catch (e) {
+                alert("STILL INVALID: The text you pasted is incomplete. Make sure you copied the ENTIRE file from Acode (Use 'Select All').");
+            }
+        };
+        document.getElementById('cancelImport').onclick = () => document.body.removeChild(overlay);
     }
 
     function processImage(input) {
@@ -103,7 +63,7 @@
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const scale = 400 / img.width; // Smaller scale to keep backup size manageable
+                const scale = 400 / img.width; 
                 canvas.width = 400; canvas.height = img.height * scale;
                 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
                 db.items.push({ id: Date.now().toString(), f: db.active, img: canvas.toDataURL('image/jpeg', 0.5), txt: "" });
@@ -124,5 +84,3 @@
     function endP() { clearTimeout(pTimer); }
     render();
 </script>
-</body>
-</html>
