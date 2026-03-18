@@ -3,40 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mimed-Up Zoom HD</title>
+    
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#4a4a4a">
+
     <style>
         :root { --stone: #4a4a4a; --bg: #d6d6d6; }
-        body { font-family: sans-serif; margin: 0; background: var(--bg); padding-bottom: 100px; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         
-        /* Header */
-        .header { position: sticky; top: 0; z-index: 100; background: var(--stone); padding: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
-        .search-bar { flex-grow: 1; background: rgba(255,255,255,0.2); border: none; border-radius: 8px; padding: 10px; color: white; outline: none; }
+        body { 
+            font-family: sans-serif; margin: 0; background: var(--bg); 
+            padding-bottom: 120px; touch-action: manipulation; 
+        }
+        
+        .header { 
+            position: sticky; top: 0; z-index: 100; background: var(--stone); 
+            padding: 12px; display: flex; align-items: center; gap: 10px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); 
+        }
+        .search-bar { 
+            flex-grow: 1; background: rgba(255,255,255,0.2); border: none; 
+            border-radius: 8px; padding: 10px; color: white; outline: none; font-size: 16px; 
+        }
         .btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; padding: 5px; }
 
-        /* Grid */
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; }
-        .card { background: white; border-radius: 8px; overflow: hidden; border: 1px solid #bbb; display: flex; flex-direction: column; }
-        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; cursor: zoom-in; }
+        .card { 
+            background: white; border-radius: 8px; overflow: hidden; 
+            border: 1px solid #bbb; display: flex; flex-direction: column; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+        }
+        .card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; cursor: zoom-in; background: #eee; }
         
-        /* Auto-Expanding Textbox */
-        .info-input { width: 100%; border: none; padding: 10px; font-size: 13px; background: #fff; box-sizing: border-box; border-top: 1px solid #eee; resize: none; overflow: hidden; min-height: 40px; color: #111; display: block; }
+        .info-input { 
+            width: 100%; border: none; padding: 12px; font-size: 14px; 
+            background: #fff; border-top: 1px solid #eee; resize: none; 
+            overflow: hidden; min-height: 45px; color: #111; line-height: 1.4; 
+        }
 
-        /* Full Screen Overlay */
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; }
-        #overlay img { max-width: 100%; max-height: 100%; object-fit: contain; }
+        /* ZOOM OVERLAY */
+        #overlay { 
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.98); z-index: 1000; overflow: hidden;
+            touch-action: none; /* Crucial for custom zoom logic */
+        }
+        #overlay-img { 
+            position: absolute;
+            width: 100%; height: 100%; 
+            object-fit: contain;
+            transform-origin: center;
+            transition: transform 0.1s ease-out;
+        }
+        .close-overlay {
+            position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; z-index: 1001;
+            background: rgba(0,0,0,0.5); width: 44px; height: 44px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+        }
 
-        .fab { position: fixed; bottom: 20px; right: 20px; width: 64px; height: 64px; background: var(--stone); color: white; border-radius: 50%; border: none; font-size: 32px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 10; }
+        .fab { 
+            position: fixed; bottom: 25px; right: 25px; width: 65px; height: 65px; 
+            background: var(--stone); color: white; border-radius: 50%; border: none; 
+            font-size: 35px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 10; 
+            display: flex; align-items: center; justify-content: center; 
+        }
     </style>
 </head>
 <body>
 
 <div class="header">
-    <button class="btn" onclick="copyPureText()" title="Copy All Notes">💾</button>
+    <button class="btn" onclick="copyPureText()">💾</button>
     <input type="text" id="search" class="search-bar" placeholder="Search..." oninput="render()">
 </div>
 
 <div class="grid" id="main-grid"></div>
 
-<div id="overlay" onclick="this.style.display='none'">
+<div id="overlay">
+    <div class="close-overlay" onclick="closeImg()">✕</div>
     <img id="overlay-img" src="">
 </div>
 
@@ -49,42 +93,85 @@
     function render() {
         const s = document.getElementById('search').value.toLowerCase();
         const filtered = db.items.filter(i => i.txt.toLowerCase().includes(s));
-        
         const grid = document.getElementById('main-grid');
+        
         grid.innerHTML = filtered.map(item => `
             <div class="card">
-                <img src="${item.img}" onclick="openImg('${item.img}')" oncontextmenu="del('${item.id}'); return false;">
-                <textarea class="info-input" oninput="autoGrow(this); upd('${item.id}', this.value)" placeholder="..."> ${item.txt}</textarea>
+                <img src="${item.img}" onclick="openImg('${item.img}')" ontouchstart="handleTouchStart('${item.id}')" ontouchend="handleTouchEnd()">
+                <textarea class="info-input" oninput="autoGrow(this); upd('${item.id}', this.value)" placeholder="Note...">${item.txt}</textarea>
             </div>
         `).join('');
         
-        document.querySelectorAll('.info-input').forEach(autoGrow);
+        setTimeout(() => { document.querySelectorAll('.info-input').forEach(autoGrow); }, 100);
     }
 
     function autoGrow(el) {
         el.style.height = "auto";
-        el.style.height = el.scrollHeight + "px";
+        el.style.height = (el.scrollHeight) + "px";
     }
+
+    // --- ZOOM LOGIC ---
+    let scale = 1, lastScale = 1;
+    let posX = 0, posY = 0;
+    let lastPosX = 0, lastPosY = 0;
+    let startX, startY;
+    let initialDistance = null;
 
     function openImg(src) {
         const ov = document.getElementById('overlay');
         const img = document.getElementById('overlay-img');
         img.src = src;
-        ov.style.display = 'flex';
+        ov.style.display = 'block';
+        resetZoom();
     }
 
-    // COPIES ONLY THE WRITTEN TEXT
-    function copyPureText() {
-        const textOnly = db.items
-            .map(i => i.txt.trim())
-            .filter(t => t !== "")
-            .join("\n---\n");
-            
-        if (!textOnly) { alert("No notes found!"); return; }
+    function closeImg() {
+        document.getElementById('overlay').style.display = 'none';
+    }
 
-        navigator.clipboard.writeText(textOnly).then(() => {
-            alert("NOTES COPIED: All your written text is now on your clipboard.");
-        });
+    function resetZoom() {
+        scale = 1; posX = 0; posY = 0;
+        updateTransform();
+    }
+
+    function updateTransform() {
+        const img = document.getElementById('overlay-img');
+        img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+    }
+
+    const overlay = document.getElementById('overlay');
+    overlay.addEventListener('touchstart', e => {
+        if (e.touches.length === 2) {
+            initialDistance = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+        } else {
+            startX = e.touches[0].pageX - posX;
+            startY = e.touches[0].pageY - posY;
+        }
+    });
+
+    overlay.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 2 && initialDistance) {
+            let dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
+            scale = Math.min(Math.max(1, lastScale * (dist / initialDistance)), 5);
+        } else if (e.touches.length === 1 && scale > 1) {
+            posX = e.touches[0].pageX - startX;
+            posY = e.touches[0].pageY - startY;
+        }
+        updateTransform();
+    }, { passive: false });
+
+    overlay.addEventListener('touchend', e => {
+        lastScale = scale;
+        initialDistance = null;
+    });
+
+    // --- END ZOOM LOGIC ---
+
+    function copyPureText() {
+        const textOnly = db.items.map(i => i.txt.trim()).filter(t => t !== "").join("\n---\n");
+        if (!textOnly) return alert("No notes!");
+        navigator.clipboard.writeText(textOnly).then(() => alert("TEXT COPIED!"));
     }
 
     function process(input) {
@@ -94,10 +181,17 @@
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const scale = 500 / img.width; 
-                canvas.width = 500; canvas.height = img.height * scale;
-                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                db.items.push({ id: Date.now().toString(), img: canvas.toDataURL('image/jpeg', 0.6), txt: "" });
+                const MAX_WIDTH = 1200; 
+                const scaleRes = MAX_WIDTH / img.width; 
+                canvas.width = MAX_WIDTH; 
+                canvas.height = img.height * scaleRes;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                const highResData = canvas.toDataURL('image/jpeg', 0.85);
+                db.items.push({ id: Date.now().toString(), img: highResData, txt: "" });
                 save(); render();
             };
             img.src = e.target.result;
@@ -110,6 +204,10 @@
         if(i > -1) { db.items[i].txt = v; save(); } 
     }
 
+    let tTimer;
+    function handleTouchStart(id) { tTimer = setTimeout(() => del(id), 1000); }
+    function handleTouchEnd() { clearTimeout(tTimer); }
+
     function del(id) { 
         if(confirm("Delete?")) { 
             db.items = db.items.filter(i => i.id !== id); 
@@ -118,9 +216,8 @@
     }
 
     function save() { localStorage.setItem('v_stone_v9', JSON.stringify(db)); }
-
     render();
 </script>
-
 </body>
 </html>
+
